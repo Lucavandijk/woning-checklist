@@ -76,12 +76,6 @@ st.markdown(
 
 st.title("🏠 Woning Schouw Checklist")
 
-# --- Helper functie om tekst te schonen ---
-def clean_cell(text):
-    if not text:
-        return ""
-    return str(text).replace('\n', ' ').replace('\r', ' ').replace('\t', ' ').strip()
-
 # --- Algemene informatie ---
 st.header("Algemene informatie")
 adres = st.text_input("Adres woning")
@@ -253,127 +247,119 @@ def upload_file_to_drive(service, file, folder_id):
             fileId=file_id,
             body={"role": "reader", "type": "anyone"},
         ).execute()
-        link = f"https://drive.google.com/uc?id={file_id}"
-        st.write(f"Upload succesvol: {file.name}")
-        return link
+        st.write(f"Bestand geüpload: {file.name} (ID: {file_id})")
+        return f"https://drive.google.com/uc?id={file_id}"
     except Exception as e:
-        st.error(f"Fout bij upload: {e}")
-        return ""
+        st.error(f"Fout bij uploaden bestand: {e}")
+        return None
 
-# --- Bestand links verzamelen ---
-def get_file_links(files, drive_service, folder_id):
-    links = []
-    if files:
-        for file in files:
-            link = upload_file_to_drive(drive_service, file, folder_id)
-            if link:
-                links.append(link)
-    return links
+# --- Verzamel foto-URL's ---
+def get_photo_urls(fotos, drive_service, folder_id):
+    urls = []
+    if fotos:
+        for foto in fotos:
+            if foto is not None:
+                url = upload_file_to_drive(drive_service, foto, folder_id)
+                if url:
+                    urls.append(url)
+    return ", ".join(urls)
 
-# --- Verzenden formulier ---
-if st.button("Formulier opslaan"):
+# --- Submit ---
+if st.button("Verzenden"):
+    # Basis check
+    if not adres or not inspecteur or m2_woonoppervlak < 1:
+        st.error("Vul alsjeblieft de verplichte velden in (adres, inspecteur, woonoppervlak).")
+    else:
+        try:
+            sheet = connect_to_gsheet()
+            drive_service = connect_to_drive()
+            folder_id = "1JhQp5LPBq3F1XCe3wQX7WjoEnb3YEsnh"  # Pas aan naar jouw folder ID
 
-    # Verbindingen
-    sheet = connect_to_gsheet()
-    drive_service = connect_to_drive()
-    folder_id = "1sGPG__l3uSY7TvGTG4cLpEvSYicQXnTk"  # Folder ID in Drive
+            # Upload foto's en krijg URL's
+            buitenmuren_foto_url = get_photo_urls([buitenmuren_foto], drive_service, folder_id)
+            dakbedekking_foto_url = get_photo_urls([dakbedekking_foto], drive_service, folder_id)
+            kozijnen_foto_url = get_photo_urls([kozijnen_foto], drive_service, folder_id)
+            verwarming_foto_url = get_photo_urls([verwarming_foto], drive_service, folder_id)
+            meterkast_foto_url = get_photo_urls([meterkast_foto], drive_service, folder_id)
+            tuin_foto_urls = get_photo_urls(tuin_fotos, drive_service, folder_id) if tuin_checked else ""
+            garage_foto_url = get_photo_urls([garage_foto], drive_service, folder_id)
+            schuur_foto_url = get_photo_urls([schuur_foto], drive_service, folder_id)
+            gebreken_foto_urls = get_photo_urls(gebreken_fotos, drive_service, folder_id)
 
-    # Upload foto’s en verzamel links
-    buitenmuren_foto_link = ""
-    if buitenmuren_foto:
-        buitenmuren_foto_link = upload_file_to_drive(drive_service, buitenmuren_foto, folder_id)
+            # Maak data rij - volgorde moet overeenkomen met kolommen in sheet!
+            data = [
+                adres,
+                datum.strftime("%Y-%m-%d"),
+                inspecteur,
+                m2_woonoppervlak,
+                energielabel,
+                # Bouwkundige elementen
+                "Ja" if buitenmuren_checked else "Nee",
+                buitenmuren_foto_url,
+                buitenmuren_opm,
+                "Ja" if dakbedekking_checked else "Nee",
+                dakbedekking_foto_url,
+                dakbedekking_opm,
+                "Ja" if kozijnen_checked else "Nee",
+                kozijnen_foto_url,
+                kozijnen_opm,
+                ", ".join(geselecteerde_glas_types),
+                "; ".join(f"{k}: {v}%" for k, v in glas_percentages.items()),
+                vloer_type,
+                vloer_opm,
+                # Technische installaties
+                "Ja" if verwarming_checked else "Nee",
+                verwarming_type if verwarming_checked else "",
+                verwarming_foto_url,
+                verwarming_opm,
+                "Ja" if elektra_checked else "Nee",
+                elektra_opm,
+                meterkast_type,
+                meterkast_foto_url,
+                "Ja" if ventilatie_checked else "Nee",
+                ventilatie_opm,
+                "Ja" if isolatie_checked else "Nee",
+                ", ".join(isolatie_types),
+                isolatie_opm,
+                # Buitenruimte
+                "Ja" if tuin_checked else "Nee",
+                tuin_foto_urls,
+                "Ja" if garage_checked else "Nee",
+                garage_foto_url,
+                garage_opm,
+                "Ja" if schuur_checked else "Nee",
+                schuur_foto_url,
+                schuur_opm,
+                "Ja" if toegankelijkheid_checked else "Nee",
+                toegankelijkheid_opm,
+                # Gebreken
+                gebreken_tekst,
+                gebreken_foto_urls,
+                # Overig / juridisch
+                "Ja" if erfdienstbaarheden_checked else "Nee",
+                erfdienstbaarheden_opm,
+                "Ja" if aanbouw_checked else "Nee",
+                aanbouw_opm,
+                algemene_indruk,
+                opmerkingen_inspecteur,
+            ]
 
-    dakbedekking_foto_link = ""
-    if dakbedekking_foto:
-        dakbedekking_foto_link = upload_file_to_drive(drive_service, dakbedekking_foto, folder_id)
+            # Zorg dat data precies 46 kolommen heeft
+            expected_columns = 46
+            if len(data) < expected_columns:
+                data += [''] * (expected_columns - len(data))
+            elif len(data) > expected_columns:
+                data = data[:expected_columns]
 
-    kozijnen_foto_link = ""
-    if kozijnen_foto:
-        kozijnen_foto_link = upload_file_to_drive(drive_service, kozijnen_foto, folder_id)
+            # Debug info
+            st.write(f"Aantal kolommen in data: {len(data)}")
+            st.write(f"Data rij preview: {data}")
 
-    verwarming_foto_link = ""
-    if verwarming_foto:
-        verwarming_foto_link = upload_file_to_drive(drive_service, verwarming_foto, folder_id)
+            # Voeg data in rij 2 toe (net onder de header)
+            sheet.insert_row(data, 2, value_input_option='USER_ENTERED')
 
-    meterkast_foto_link = ""
-    if meterkast_foto:
-        meterkast_foto_link = upload_file_to_drive(drive_service, meterkast_foto, folder_id)
+            st.success("Formulier succesvol opgeslagen in Google Sheets!")
 
-    tuin_fotos_links_str = ""
-    if tuin_fotos:
-        tuin_fotos_links = get_file_links(tuin_fotos, drive_service, folder_id)
-        tuin_fotos_links_str = ", ".join(tuin_fotos_links)
-
-    garage_foto_link = ""
-    if garage_foto:
-        garage_foto_link = upload_file_to_drive(drive_service, garage_foto, folder_id)
-
-    schuur_foto_link = ""
-    if schuur_foto:
-        schuur_foto_link = upload_file_to_drive(drive_service, schuur_foto, folder_id)
-
-    gebreken_fotos_links_str = ""
-    if gebreken_fotos:
-        gebreken_fotos_links = get_file_links(gebreken_fotos, drive_service, folder_id)
-        gebreken_fotos_links_str = ", ".join(gebreken_fotos_links)
-
-    # Maak data rij, schoon alle tekstvelden met clean_cell
-    data = [
-        str(datum),
-        clean_cell(adres),
-        clean_cell(inspecteur),
-        str(m2_woonoppervlak),
-        energielabel,
-        str(buitenmuren_checked),
-        clean_cell(buitenmuren_opm),
-        buitenmuren_foto_link or "",
-        str(dakbedekking_checked),
-        clean_cell(dakbedekking_opm),
-        dakbedekking_foto_link or "",
-        str(kozijnen_checked),
-        clean_cell(kozijnen_opm),
-        kozijnen_foto_link or "",
-        clean_cell(", ".join(geselecteerde_glas_types)),
-        clean_cell(", ".join([f"{k}:{v}%" for k, v in glas_percentages.items()])),
-        vloer_type,
-        clean_cell(vloer_opm),
-        str(verwarming_checked),
-        verwarming_type,
-        clean_cell(verwarming_opm),
-        verwarming_foto_link or "",
-        str(elektra_checked),
-        clean_cell(elektra_opm),
-        meterkast_type,
-        meterkast_foto_link or "",
-        str(ventilatie_checked),
-        clean_cell(ventilatie_opm),
-        str(isolatie_checked),
-        clean_cell(", ".join(isolatie_types)),
-        clean_cell(isolatie_opm),
-        str(tuin_checked),
-        clean_cell(tuin_fotos_links_str),
-        str(garage_checked),
-        clean_cell(garage_opm),
-        garage_foto_link or "",
-        str(schuur_checked),
-        clean_cell(schuur_opm),
-        schuur_foto_link or "",
-        str(toegankelijkheid_checked),
-        clean_cell(toegankelijkheid_opm),
-        clean_cell(gebreken_tekst),
-        clean_cell(gebreken_fotos_links_str),
-        str(erfdienstbaarheden_checked),
-        clean_cell(erfdienstbaarheden_opm),
-        str(aanbouw_checked),
-        clean_cell(aanbouw_opm),
-        clean_cell(algemene_indruk),
-        clean_cell(opmerkingen_inspecteur),
-    ]
-
-    # Voeg data toe aan Google Sheet
-    try:
-        sheet.append_row(data)
-        st.success("Formulier succesvol opgeslagen!")
-    except Exception as e:
-        st.error(f"Fout bij opslaan in Google Sheets: {e}")
+        except Exception as e:
+            st.error(f"Er is een fout opgetreden bij het opslaan: {e}")
 
