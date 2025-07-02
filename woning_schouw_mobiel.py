@@ -1,6 +1,5 @@
 import streamlit as st
 from datetime import date
-
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -17,13 +16,11 @@ st.markdown(
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         padding: 1rem;
     }
-
     /* Headers */
     h1, h2, h3 {
         color: #0099FF !important;
         font-weight: 700;
     }
-
     /* Buttons - groter en meer padding voor mobiel */
     div.stButton > button {
         background-color: #0099FF;
@@ -40,13 +37,11 @@ st.markdown(
         background-color: #007acc;
         color: white;
     }
-
     /* Inputs en textareas groter */
     input, textarea, select {
         font-size: 1rem !important;
         padding: 0.5em !important;
     }
-
     /* Checkbox grotere klikarea */
     label[data-testid="stMarkdownContainer"] > div > div > input[type="checkbox"] {
         accent-color: #0099FF;
@@ -54,19 +49,16 @@ st.markdown(
         height: 1.5em;
         cursor: pointer;
     }
-
     /* Links */
     a {
         color: #0099FF !important;
     }
-
     /* Expander header kleur */
     button[aria-expanded="false"], button[aria-expanded="true"] {
         color: #0099FF !important;
         font-weight: 600;
         font-size: 1rem;
     }
-
     /* Maak alles mobielvriendelijk */
     @media (max-width: 600px) {
         .css-1d391kg {
@@ -87,7 +79,6 @@ adres = st.text_input("Adres woning")
 datum = st.date_input("Datum schouw", value=date.today())
 inspecteur = st.text_input("Naam inspecteur")
 
-# Verplichte velden woonoppervlak en energielabel
 m2_woonoppervlak = st.number_input("Woonoppervlak (m²) *", min_value=1, step=1)
 energielabel_opties = ["A++", "A+", "A", "B", "C", "D", "E", "F", "G", "Onbekend"]
 energielabel = st.selectbox("Bekend energielabel *", energielabel_opties)
@@ -209,9 +200,8 @@ with st.expander("Details aanbouw"):
 algemene_indruk = st.text_area("Algemene indruk woning")
 opmerkingen_inspecteur = st.text_area("Algemene opmerkingen inspecteur")
 
-
-# --- Functies voor Google Sheets ---
-
+# --- Functie om te verbinden met Google Sheet ---
+@st.cache_resource
 def connect_to_gsheet():
     creds_dict = st.secrets["gcp_service_account"]
     creds = Credentials.from_service_account_info(
@@ -222,70 +212,81 @@ def connect_to_gsheet():
         ],
     )
     client = gspread.authorize(creds)
-    sheet = client.open_by_key("1ZTGaSt8o51LGcW3lS3KJMeTVmZmEK0hRBhNVpZb9gI8").sheet1
+    sheet = client.open_by_key("1ZTGaSt8o51LGcW3lS3KJMeTVmSZZTt2PkzzFUbRrH-U").sheet1
     return sheet
 
-def flatten_data_for_sheet(data):
-    # Maak een vlakke lijst met volgorde passend bij kolommen in je Google Sheet
-    flat = [
-        data.get("adres", ""),
-        data.get("datum", ""),
-        data.get("inspecteur", ""),
-        data.get("m2_woonoppervlak", ""),
-        data.get("energielabel", ""),
-        data.get("buitenmuren_checked", ""),
-        data.get("buitenmuren_opm", ""),
-        data.get("dakbedekking_checked", ""),
-        data.get("dakbedekking_opm", ""),
-        data.get("kozijnen_checked", ""),
-        data.get("kozijnen_opm", ""),
-        ", ".join(data.get("geselecteerde_glas_types", [])),
-        "; ".join(f"{k}: {v}%" for k, v in data.get("glas_percentages", {}).items()),
-        data.get("vloer_type", ""),
-        data.get("vloer_opm", ""),
-        data.get("verwarming_checked", ""),
-        data.get("verwarming_type", ""),
-        data.get("verwarming_opm", ""),
-        data.get("elektra_checked", ""),
-        data.get("elektra_opm", ""),
-        data.get("meterkast_type", ""),
-        data.get("ventilatie_checked", ""),
-        data.get("ventilatie_opm", ""),
-        data.get("isolatie_checked", ""),
-        ", ".join(data.get("isolatie_types", [])),
-        data.get("isolatie_opm", ""),
-        data.get("tuin_checked", ""),
-        data.get("garage_checked", ""),
-        data.get("garage_opm", ""),
-        data.get("schuur_checked", ""),
-        data.get("schuur_opm", ""),
-        data.get("toegankelijkheid_checked", ""),
-        data.get("toegankelijkheid_opm", ""),
-        data.get("gebreken_tekst", ""),
-        data.get("erfdienstbaarheden_checked", ""),
-        data.get("erfdienstbaarheden_opm", ""),
-        data.get("aanbouw_checked", ""),
-        data.get("aanbouw_opm", ""),
-        data.get("algemene_indruk", ""),
-        data.get("opmerkingen_inspecteur", ""),
+# --- Helper functie om data te flatten voor Google Sheets ---
+def flatten_data_for_sheet(data: dict) -> list:
+    return [
+        data["adres"],
+        data["datum"],
+        data["inspecteur"],
+        data["m2_woonoppervlak"],
+        data["energielabel"],
+        data["buitenmuren_checked"],
+        data["buitenmuren_foto"],
+        data["buitenmuren_opm"],
+        data["dakbedekking_checked"],
+        data["dakbedekking_foto"],
+        data["dakbedekking_opm"],
+        data["kozijnen_checked"],
+        data["kozijnen_foto"],
+        data["kozijnen_opm"],
+        ','.join(data["geselecteerde_glas_types"]),
+        ','.join(f"{k}:{v}%" for k,v in data["glas_percentages"].items()),
+        data["vloer_type"],
+        data["vloer_opm"],
+        data["verwarming_checked"],
+        data["verwarming_type"],
+        data["verwarming_foto"],
+        data["verwarming_opm"],
+        data["elektra_checked"],
+        data["elektra_opm"],
+        data["meterkast_type"],
+        data["meterkast_foto"],
+        data["ventilatie_checked"],
+        data["ventilatie_opm"],
+        data["isolatie_checked"],
+        ','.join(data["isolatie_types"]),
+        data["isolatie_opm"],
+        data["tuin_checked"],
+        str(len(data["tuin_fotos"])) if data["tuin_fotos"] else "0",
+        data["garage_checked"],
+        data["garage_foto"],
+        data["garage_opm"],
+        data["schuur_checked"],
+        data["schuur_foto"],
+        data["schuur_opm"],
+        data["toegankelijkheid_checked"],
+        data["toegankelijkheid_opm"],
+        data["gebreken_tekst"],
+        str(len(data["gebreken_fotos"])) if data["gebreken_fotos"] else "0",
+        data["erfdienstbaarheden_checked"],
+        data["erfdienstbaarheden_opm"],
+        data["aanbouw_checked"],
+        data["aanbouw_opm"],
+        data["algemene_indruk"],
+        data["opmerkingen_inspecteur"],
     ]
-    return flat
 
+# --- Verzenden knop ---
+if st.button("Verzenden naar Google Sheets"):
 
-# --- Button om op te slaan ---
-
-if st.button("Opslaan checklist"):
-    data = {
+    # Verzamel alle data in een dict
+    form_data = {
         "adres": adres,
         "datum": datum.strftime("%Y-%m-%d"),
         "inspecteur": inspecteur,
         "m2_woonoppervlak": m2_woonoppervlak,
         "energielabel": energielabel,
         "buitenmuren_checked": buitenmuren_checked,
+        "buitenmuren_foto": buitenmuren_foto.name if buitenmuren_foto else "",
         "buitenmuren_opm": buitenmuren_opm,
         "dakbedekking_checked": dakbedekking_checked,
+        "dakbedekking_foto": dakbedekking_foto.name if dakbedekking_foto else "",
         "dakbedekking_opm": dakbedekking_opm,
         "kozijnen_checked": kozijnen_checked,
+        "kozijnen_foto": kozijnen_foto.name if kozijnen_foto else "",
         "kozijnen_opm": kozijnen_opm,
         "geselecteerde_glas_types": geselecteerde_glas_types,
         "glas_percentages": glas_percentages,
@@ -293,23 +294,29 @@ if st.button("Opslaan checklist"):
         "vloer_opm": vloer_opm,
         "verwarming_checked": verwarming_checked,
         "verwarming_type": verwarming_type,
+        "verwarming_foto": verwarming_foto.name if verwarming_foto else "",
         "verwarming_opm": verwarming_opm,
         "elektra_checked": elektra_checked,
         "elektra_opm": elektra_opm,
         "meterkast_type": meterkast_type,
+        "meterkast_foto": meterkast_foto.name if meterkast_foto else "",
         "ventilatie_checked": ventilatie_checked,
         "ventilatie_opm": ventilatie_opm,
         "isolatie_checked": isolatie_checked,
         "isolatie_types": isolatie_types,
         "isolatie_opm": isolatie_opm,
         "tuin_checked": tuin_checked,
+        "tuin_fotos": tuin_fotos,
         "garage_checked": garage_checked,
+        "garage_foto": garage_foto.name if garage_foto else "",
         "garage_opm": garage_opm,
         "schuur_checked": schuur_checked,
+        "schuur_foto": schuur_foto.name if schuur_foto else "",
         "schuur_opm": schuur_opm,
         "toegankelijkheid_checked": toegankelijkheid_checked,
         "toegankelijkheid_opm": toegankelijkheid_opm,
         "gebreken_tekst": gebreken_tekst,
+        "gebreken_fotos": gebreken_fotos,
         "erfdienstbaarheden_checked": erfdienstbaarheden_checked,
         "erfdienstbaarheden_opm": erfdienstbaarheden_opm,
         "aanbouw_checked": aanbouw_checked,
@@ -318,22 +325,11 @@ if st.button("Opslaan checklist"):
         "opmerkingen_inspecteur": opmerkingen_inspecteur,
     }
 
-    # Opslaan lokaal
-    import json
-    filename = "woning_schouw_data.json"
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-    st.success(f"Checklist succesvol opgeslagen als {filename}")
+    sheet = connect_to_gsheet()
 
-    # Opslaan in Google Sheets
     try:
-        sheet = connect_to_gsheet()
-        flat_row = flatten_data_for_sheet(data)
-        sheet.append_row(flat_row)
-        st.success("✅ Gegevens ook succesvol opgeslagen in Google Sheets!")
+        flattened = flatten_data_for_sheet(form_data)
+        sheet.append_row(flattened)
+        st.success("✅ Gegevens succesvol verzonden!")
     except Exception as e:
-        st.error(f"Fout bij opslaan in Google Sheets: {e}")
-
-        with open("woning_schouw_data.json", "w", encoding="utf-8") as f:
-            f.write(json_data)
-        st.success("Checklist succesvol opgeslagen als woning_schouw_data.json")
+        st.error(f"⚠️ Fout bij verzenden: {e}")
