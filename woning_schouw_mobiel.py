@@ -76,6 +76,12 @@ st.markdown(
 
 st.title("🏠 Woning Schouw Checklist")
 
+# --- Helper functie om tekst te schonen ---
+def clean_cell(text):
+    if not text:
+        return ""
+    return str(text).replace('\n', ' ').replace('\r', ' ').replace('\t', ' ').strip()
+
 # --- Algemene informatie ---
 st.header("Algemene informatie")
 adres = st.text_input("Adres woning")
@@ -247,129 +253,127 @@ def upload_file_to_drive(service, file, folder_id):
             fileId=file_id,
             body={"role": "reader", "type": "anyone"},
         ).execute()
-        st.write(f"Succesvol geüpload: {file.name}")
-        return f"https://drive.google.com/uc?id={file_id}"
+        link = f"https://drive.google.com/uc?id={file_id}"
+        st.write(f"Upload succesvol: {file.name}")
+        return link
     except Exception as e:
-        st.error(f"Upload mislukt voor {file.name}: {e}")
-        return None
+        st.error(f"Fout bij upload: {e}")
+        return ""
 
-# --- Upload meerdere bestanden met logging ---
-def upload_files_list(service, files, folder_id):
+# --- Bestand links verzamelen ---
+def get_file_links(files, drive_service, folder_id):
     links = []
     if files:
-        st.write(f"Aantal bestanden om te uploaden: {len(files)}")
-        for f in files:
-            st.write(f"Begin upload bestand: {f.name}")
-            link = upload_file_to_drive(service, f, folder_id)
+        for file in files:
+            link = upload_file_to_drive(drive_service, file, folder_id)
             if link:
                 links.append(link)
-            else:
-                st.error(f"Fout bij upload van bestand: {f.name}")
-        st.write("Alle uploads afgerond.")
-    else:
-        st.write("Geen bestanden om te uploaden.")
     return links
 
-# --- Upload map-ID ---
-DRIVE_FOLDER_ID = "1lRrOGnw1nwmmlGAvglOsqavSYztiMDND"
+# --- Verzenden formulier ---
+if st.button("Formulier opslaan"):
 
-if st.button("Formulier versturen"):
-
+    # Verbindingen
     sheet = connect_to_gsheet()
     drive_service = connect_to_drive()
+    folder_id = "1sGPG__l3uSY7TvGTG4cLpEvSYicQXnTk"  # Folder ID in Drive
 
-    # Upload enkelvoudige foto's (controleer of niet None)
-    buitenmuren_foto_link = None
+    # Upload foto’s en verzamel links
+    buitenmuren_foto_link = ""
     if buitenmuren_foto:
-        buitenmuren_foto_link = upload_file_to_drive(drive_service, buitenmuren_foto, DRIVE_FOLDER_ID)
+        buitenmuren_foto_link = upload_file_to_drive(drive_service, buitenmuren_foto, folder_id)
 
-    dakbedekking_foto_link = None
+    dakbedekking_foto_link = ""
     if dakbedekking_foto:
-        dakbedekking_foto_link = upload_file_to_drive(drive_service, dakbedekking_foto, DRIVE_FOLDER_ID)
+        dakbedekking_foto_link = upload_file_to_drive(drive_service, dakbedekking_foto, folder_id)
 
-    kozijnen_foto_link = None
+    kozijnen_foto_link = ""
     if kozijnen_foto:
-        kozijnen_foto_link = upload_file_to_drive(drive_service, kozijnen_foto, DRIVE_FOLDER_ID)
+        kozijnen_foto_link = upload_file_to_drive(drive_service, kozijnen_foto, folder_id)
 
-    verwarming_foto_link = None
+    verwarming_foto_link = ""
     if verwarming_foto:
-        verwarming_foto_link = upload_file_to_drive(drive_service, verwarming_foto, DRIVE_FOLDER_ID)
+        verwarming_foto_link = upload_file_to_drive(drive_service, verwarming_foto, folder_id)
 
-    meterkast_foto_link = None
+    meterkast_foto_link = ""
     if meterkast_foto:
-        meterkast_foto_link = upload_file_to_drive(drive_service, meterkast_foto, DRIVE_FOLDER_ID)
+        meterkast_foto_link = upload_file_to_drive(drive_service, meterkast_foto, folder_id)
 
-    garage_foto_link = None
+    tuin_fotos_links_str = ""
+    if tuin_fotos:
+        tuin_fotos_links = get_file_links(tuin_fotos, drive_service, folder_id)
+        tuin_fotos_links_str = ", ".join(tuin_fotos_links)
+
+    garage_foto_link = ""
     if garage_foto:
-        garage_foto_link = upload_file_to_drive(drive_service, garage_foto, DRIVE_FOLDER_ID)
+        garage_foto_link = upload_file_to_drive(drive_service, garage_foto, folder_id)
 
-    schuur_foto_link = None
+    schuur_foto_link = ""
     if schuur_foto:
-        schuur_foto_link = upload_file_to_drive(drive_service, schuur_foto, DRIVE_FOLDER_ID)
+        schuur_foto_link = upload_file_to_drive(drive_service, schuur_foto, folder_id)
 
-    # Upload meervoudige foto's
-    tuin_fotos_links = upload_files_list(drive_service, tuin_fotos, DRIVE_FOLDER_ID)
-    gebreken_fotos_links = upload_files_list(drive_service, gebreken_fotos, DRIVE_FOLDER_ID)
+    gebreken_fotos_links_str = ""
+    if gebreken_fotos:
+        gebreken_fotos_links = get_file_links(gebreken_fotos, drive_service, folder_id)
+        gebreken_fotos_links_str = ", ".join(gebreken_fotos_links)
 
-    # Zet meervoudige foto-links om in string
-    tuin_fotos_links_str = ", ".join(tuin_fotos_links) if tuin_fotos_links else ""
-    gebreken_fotos_links_str = ", ".join(gebreken_fotos_links) if gebreken_fotos_links else ""
-
-    # Bouw data rij voor Google Sheet
+    # Maak data rij, schoon alle tekstvelden met clean_cell
     data = [
         str(datum),
-        adres,
-        inspecteur,
+        clean_cell(adres),
+        clean_cell(inspecteur),
         str(m2_woonoppervlak),
         energielabel,
         str(buitenmuren_checked),
-        buitenmuren_opm,
+        clean_cell(buitenmuren_opm),
         buitenmuren_foto_link or "",
         str(dakbedekking_checked),
-        dakbedekking_opm,
+        clean_cell(dakbedekking_opm),
         dakbedekking_foto_link or "",
         str(kozijnen_checked),
-        kozijnen_opm,
+        clean_cell(kozijnen_opm),
         kozijnen_foto_link or "",
-        ", ".join(geselecteerde_glas_types),
-        ", ".join([f"{k}:{v}%" for k, v in glas_percentages.items()]),
+        clean_cell(", ".join(geselecteerde_glas_types)),
+        clean_cell(", ".join([f"{k}:{v}%" for k, v in glas_percentages.items()])),
         vloer_type,
-        vloer_opm,
+        clean_cell(vloer_opm),
         str(verwarming_checked),
         verwarming_type,
-        verwarming_opm,
+        clean_cell(verwarming_opm),
         verwarming_foto_link or "",
         str(elektra_checked),
-        elektra_opm,
+        clean_cell(elektra_opm),
         meterkast_type,
         meterkast_foto_link or "",
         str(ventilatie_checked),
-        ventilatie_opm,
+        clean_cell(ventilatie_opm),
         str(isolatie_checked),
-        ", ".join(isolatie_types),
-        isolatie_opm,
+        clean_cell(", ".join(isolatie_types)),
+        clean_cell(isolatie_opm),
         str(tuin_checked),
-        tuin_fotos_links_str,
+        clean_cell(tuin_fotos_links_str),
         str(garage_checked),
-        garage_opm,
+        clean_cell(garage_opm),
         garage_foto_link or "",
         str(schuur_checked),
-        schuur_opm,
+        clean_cell(schuur_opm),
         schuur_foto_link or "",
         str(toegankelijkheid_checked),
-        toegankelijkheid_opm,
-        gebreken_tekst,
-        gebreken_fotos_links_str,
+        clean_cell(toegankelijkheid_opm),
+        clean_cell(gebreken_tekst),
+        clean_cell(gebreken_fotos_links_str),
         str(erfdienstbaarheden_checked),
-        erfdienstbaarheden_opm,
+        clean_cell(erfdienstbaarheden_opm),
         str(aanbouw_checked),
-        aanbouw_opm,
-        algemene_indruk,
-        opmerkingen_inspecteur,
+        clean_cell(aanbouw_opm),
+        clean_cell(algemene_indruk),
+        clean_cell(opmerkingen_inspecteur),
     ]
 
+    # Voeg data toe aan Google Sheet
     try:
         sheet.append_row(data)
-        st.success("Formulier succesvol verstuurd en data opgeslagen.")
+        st.success("Formulier succesvol opgeslagen!")
     except Exception as e:
         st.error(f"Fout bij opslaan in Google Sheets: {e}")
+
