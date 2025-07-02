@@ -227,32 +227,47 @@ def connect_to_drive():
     service = build('drive', 'v3', credentials=creds)
     return service
 
-# --- Upload bestand naar Google Drive ---
+# --- Upload bestand naar Google Drive met logging ---
 def upload_file_to_drive(service, file, folder_id):
-    file_metadata = {
-        'name': file.name,
-        'parents': [folder_id]
-    }
-    media = MediaIoBaseUpload(io.BytesIO(file.getbuffer()), mimetype=file.type)
-    uploaded_file = service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields='id'
-    ).execute()
-    file_id = uploaded_file.get('id')
-    # Maak direct een shareable link (publiek lezen)
-    service.permissions().create(
-        fileId=file_id,
-        body={"role": "reader", "type": "anyone"},
-    ).execute()
-    return f"https://drive.google.com/uc?id={file_id}"
+    st.write(f"Uploaden gestart: {file.name} (type: {file.type})")
+    try:
+        file_metadata = {
+            'name': file.name,
+            'parents': [folder_id]
+        }
+        media = MediaIoBaseUpload(io.BytesIO(file.getbuffer()), mimetype=file.type)
+        uploaded_file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id'
+        ).execute()
+        file_id = uploaded_file.get('id')
+        # Maak direct een shareable link (publiek lezen)
+        service.permissions().create(
+            fileId=file_id,
+            body={"role": "reader", "type": "anyone"},
+        ).execute()
+        st.write(f"Succesvol geüpload: {file.name}")
+        return f"https://drive.google.com/uc?id={file_id}"
+    except Exception as e:
+        st.error(f"Upload mislukt voor {file.name}: {e}")
+        return None
 
+# --- Upload meerdere bestanden met logging ---
 def upload_files_list(service, files, folder_id):
     links = []
     if files:
+        st.write(f"Aantal bestanden om te uploaden: {len(files)}")
         for f in files:
+            st.write(f"Begin upload bestand: {f.name}")
             link = upload_file_to_drive(service, f, folder_id)
-            links.append(link)
+            if link:
+                links.append(link)
+            else:
+                st.error(f"Fout bij upload van bestand: {f.name}")
+        st.write("Alle uploads afgerond.")
+    else:
+        st.write("Geen bestanden om te uploaden.")
     return links
 
 # --- Upload map-ID ---
@@ -296,65 +311,65 @@ if st.button("Formulier versturen"):
     tuin_fotos_links = upload_files_list(drive_service, tuin_fotos, DRIVE_FOLDER_ID)
     gebreken_fotos_links = upload_files_list(drive_service, gebreken_fotos, DRIVE_FOLDER_ID)
 
-    # Zet meervoudige foto-links om naar een enkele string (gescheiden door comma)
+    # Zet meervoudige foto-links om in string
     tuin_fotos_links_str = ", ".join(tuin_fotos_links) if tuin_fotos_links else ""
     gebreken_fotos_links_str = ", ".join(gebreken_fotos_links) if gebreken_fotos_links else ""
 
-    # Maak een rij data klaar voor Google Sheets
-    data_row = [
-        str(date.today()),
+    # Bouw data rij voor Google Sheet
+    data = [
+        str(datum),
         adres,
-        datum.strftime("%Y-%m-%d"),
         inspecteur,
-        m2_woonoppervlak,
+        str(m2_woonoppervlak),
         energielabel,
-        buitenmuren_checked,
-        buitenmuren_foto_link or "",
+        str(buitenmuren_checked),
         buitenmuren_opm,
-        dakbedekking_checked,
-        dakbedekking_foto_link or "",
+        buitenmuren_foto_link or "",
+        str(dakbedekking_checked),
         dakbedekking_opm,
-        kozijnen_checked,
-        kozijnen_foto_link or "",
+        dakbedekking_foto_link or "",
+        str(kozijnen_checked),
         kozijnen_opm,
-        "; ".join([f"{k}: {v}%" for k,v in glas_percentages.items()]) if glas_percentages else "",
+        kozijnen_foto_link or "",
+        ", ".join(geselecteerde_glas_types),
+        ", ".join([f"{k}:{v}%" for k, v in glas_percentages.items()]),
         vloer_type,
         vloer_opm,
-        verwarming_checked,
-        verwarming_type if verwarming_checked else "",
-        verwarming_foto_link or "",
+        str(verwarming_checked),
+        verwarming_type,
         verwarming_opm,
-        elektra_checked,
+        verwarming_foto_link or "",
+        str(elektra_checked),
         elektra_opm,
         meterkast_type,
         meterkast_foto_link or "",
-        ventilatie_checked,
+        str(ventilatie_checked),
         ventilatie_opm,
-        isolatie_checked,
-        ", ".join(isolatie_types) if isolatie_types else "",
+        str(isolatie_checked),
+        ", ".join(isolatie_types),
         isolatie_opm,
-        tuin_checked,
+        str(tuin_checked),
         tuin_fotos_links_str,
-        garage_checked,
-        garage_foto_link or "",
+        str(garage_checked),
         garage_opm,
-        schuur_checked,
-        schuur_foto_link or "",
+        garage_foto_link or "",
+        str(schuur_checked),
         schuur_opm,
-        toegankelijkheid_checked,
+        schuur_foto_link or "",
+        str(toegankelijkheid_checked),
         toegankelijkheid_opm,
         gebreken_tekst,
         gebreken_fotos_links_str,
-        erfdienstbaarheden_checked,
+        str(erfdienstbaarheden_checked),
         erfdienstbaarheden_opm,
-        aanbouw_checked,
+        str(aanbouw_checked),
         aanbouw_opm,
         algemene_indruk,
-        opmerkingen_inspecteur
+        opmerkingen_inspecteur,
     ]
 
     try:
-        sheet.append_row(data_row)
-        st.success("Formulier succesvol verstuurd en foto's geüpload naar Google Drive!")
+        sheet.append_row(data)
+        st.success("Formulier succesvol verstuurd en data opgeslagen.")
     except Exception as e:
-        st.error(f"Er ging iets mis bij het opslaan: {e}")
+        st.error(f"Fout bij opslaan in Google Sheets: {e}")
