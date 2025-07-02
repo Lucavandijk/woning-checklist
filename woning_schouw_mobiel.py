@@ -1,6 +1,9 @@
 import streamlit as st
 from datetime import date
 
+import gspread
+from google.oauth2.service_account import Credentials
+
 st.set_page_config(page_title="Woning Schouw Checklist", layout="centered")
 
 # --- Custom CSS styling ---
@@ -206,58 +209,131 @@ with st.expander("Details aanbouw"):
 algemene_indruk = st.text_area("Algemene indruk woning")
 opmerkingen_inspecteur = st.text_area("Algemene opmerkingen inspecteur")
 
-# --- Verzamel alle gegevens ---
-if st.button("✔️ Sla checklist op als JSON"):
 
-    if m2_woonoppervlak == 0:
-        st.error("Vul het woonoppervlak in (m2)")
-    elif energielabel == "Onbekend":
-        st.error("Selecteer het energielabel")
-    else:
-        data = {
-            "adres": adres,
-            "datum": str(datum),
-            "inspecteur": inspecteur,
-            "woonoppervlak_m2": m2_woonoppervlak,
-            "energielabel": energielabel,
-            "bouwkundige_elementen": {
-                "buitenmuren": {"gecontroleerd": buitenmuren_checked, "opmerkingen": buitenmuren_opm, "foto": (buitenmuren_foto.name if buitenmuren_foto else None)},
-                "dakbedekking": {"gecontroleerd": dakbedekking_checked, "opmerkingen": dakbedekking_opm, "foto": (dakbedekking_foto.name if dakbedekking_foto else None)},
-                "kozijnen": {"gecontroleerd": kozijnen_checked, "opmerkingen": kozijnen_opm, "foto": (kozijnen_foto.name if kozijnen_foto else None)},
-                "type_glas": {glas: glas_percentages.get(glas, 0) for glas in geselecteerde_glas_types},
-                "type_vloer": vloer_type,
-                "vloer_opmerkingen": vloer_opm,
-            },
-            "technische_installaties": {
-                "verwarming": {"gecontroleerd": verwarming_checked, "opmerkingen": verwarming_opm, "type": verwarming_type, "foto": (verwarming_foto.name if verwarming_foto else None)},
-                "elektra": {"gecontroleerd": elektra_checked, "opmerkingen": elektra_opm},
-                "meterkast": {"type": meterkast_type, "foto": (meterkast_foto.name if meterkast_foto else None)},
-                "ventilatie": {"gecontroleerd": ventilatie_checked, "opmerkingen": ventilatie_opm},
-                "isolatie": {"gecontroleerd": isolatie_checked, "soorten": isolatie_types, "opmerkingen": isolatie_opm},
-            },
-            "buitenruimte": {
-                "tuin": {"gecontroleerd": tuin_checked, "foto's": [f.name for f in tuin_fotos] if tuin_fotos else []},
-                "garage": {"gecontroleerd": garage_checked, "opmerkingen": garage_opm, "foto": (garage_foto.name if garage_foto else None)},
-                "schuur": {"gecontroleerd": schuur_checked, "opmerkingen": schuur_opm, "foto": (schuur_foto.name if schuur_foto else None)},
-                "toegankelijkheid": {"gecontroleerd": toegankelijkheid_checked, "opmerkingen": toegankelijkheid_opm},
-            },
-            "gebreken": {
-                "tekst": gebreken_tekst,
-                "foto's": [f.name for f in gebreken_fotos] if gebreken_fotos else [],
-            },
-            "overig": {
-                "erfdienstbaarheden": {"aanwezig": erfdienstbaarheden_checked, "opmerkingen": erfdienstbaarheden_opm},
-                "aanbouw": {"aanwezig": aanbouw_checked, "opmerkingen": aanbouw_opm},
-                "algemene_indruk": algemene_indruk,
-                "opmerkingen_inspecteur": opmerkingen_inspecteur,
-            }
-        }
+# --- Functies voor Google Sheets ---
 
-        import json
-        json_data = json.dumps(data, indent=4, ensure_ascii=False)
-        st.code(json_data, language="json")
+def connect_to_gsheet():
+    creds_dict = st.secrets["gcp_service_account"]
+    creds = Credentials.from_service_account_info(
+        creds_dict,
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ],
+    )
+    client = gspread.authorize(creds)
+    sheet = client.open_by_key("1ZTGaSt8o51LGcW3lS3KJMeTVmZmEK0hRBhNVpZb9gI8").sheet1
+    return sheet
 
-        # Opslaan als bestand lokaal
+def flatten_data_for_sheet(data):
+    # Maak een vlakke lijst met volgorde passend bij kolommen in je Google Sheet
+    flat = [
+        data.get("adres", ""),
+        data.get("datum", ""),
+        data.get("inspecteur", ""),
+        data.get("m2_woonoppervlak", ""),
+        data.get("energielabel", ""),
+        data.get("buitenmuren_checked", ""),
+        data.get("buitenmuren_opm", ""),
+        data.get("dakbedekking_checked", ""),
+        data.get("dakbedekking_opm", ""),
+        data.get("kozijnen_checked", ""),
+        data.get("kozijnen_opm", ""),
+        ", ".join(data.get("geselecteerde_glas_types", [])),
+        "; ".join(f"{k}: {v}%" for k, v in data.get("glas_percentages", {}).items()),
+        data.get("vloer_type", ""),
+        data.get("vloer_opm", ""),
+        data.get("verwarming_checked", ""),
+        data.get("verwarming_type", ""),
+        data.get("verwarming_opm", ""),
+        data.get("elektra_checked", ""),
+        data.get("elektra_opm", ""),
+        data.get("meterkast_type", ""),
+        data.get("ventilatie_checked", ""),
+        data.get("ventilatie_opm", ""),
+        data.get("isolatie_checked", ""),
+        ", ".join(data.get("isolatie_types", [])),
+        data.get("isolatie_opm", ""),
+        data.get("tuin_checked", ""),
+        data.get("garage_checked", ""),
+        data.get("garage_opm", ""),
+        data.get("schuur_checked", ""),
+        data.get("schuur_opm", ""),
+        data.get("toegankelijkheid_checked", ""),
+        data.get("toegankelijkheid_opm", ""),
+        data.get("gebreken_tekst", ""),
+        data.get("erfdienstbaarheden_checked", ""),
+        data.get("erfdienstbaarheden_opm", ""),
+        data.get("aanbouw_checked", ""),
+        data.get("aanbouw_opm", ""),
+        data.get("algemene_indruk", ""),
+        data.get("opmerkingen_inspecteur", ""),
+    ]
+    return flat
+
+
+# --- Button om op te slaan ---
+
+if st.button("Opslaan checklist"):
+    data = {
+        "adres": adres,
+        "datum": datum.strftime("%Y-%m-%d"),
+        "inspecteur": inspecteur,
+        "m2_woonoppervlak": m2_woonoppervlak,
+        "energielabel": energielabel,
+        "buitenmuren_checked": buitenmuren_checked,
+        "buitenmuren_opm": buitenmuren_opm,
+        "dakbedekking_checked": dakbedekking_checked,
+        "dakbedekking_opm": dakbedekking_opm,
+        "kozijnen_checked": kozijnen_checked,
+        "kozijnen_opm": kozijnen_opm,
+        "geselecteerde_glas_types": geselecteerde_glas_types,
+        "glas_percentages": glas_percentages,
+        "vloer_type": vloer_type,
+        "vloer_opm": vloer_opm,
+        "verwarming_checked": verwarming_checked,
+        "verwarming_type": verwarming_type,
+        "verwarming_opm": verwarming_opm,
+        "elektra_checked": elektra_checked,
+        "elektra_opm": elektra_opm,
+        "meterkast_type": meterkast_type,
+        "ventilatie_checked": ventilatie_checked,
+        "ventilatie_opm": ventilatie_opm,
+        "isolatie_checked": isolatie_checked,
+        "isolatie_types": isolatie_types,
+        "isolatie_opm": isolatie_opm,
+        "tuin_checked": tuin_checked,
+        "garage_checked": garage_checked,
+        "garage_opm": garage_opm,
+        "schuur_checked": schuur_checked,
+        "schuur_opm": schuur_opm,
+        "toegankelijkheid_checked": toegankelijkheid_checked,
+        "toegankelijkheid_opm": toegankelijkheid_opm,
+        "gebreken_tekst": gebreken_tekst,
+        "erfdienstbaarheden_checked": erfdienstbaarheden_checked,
+        "erfdienstbaarheden_opm": erfdienstbaarheden_opm,
+        "aanbouw_checked": aanbouw_checked,
+        "aanbouw_opm": aanbouw_opm,
+        "algemene_indruk": algemene_indruk,
+        "opmerkingen_inspecteur": opmerkingen_inspecteur,
+    }
+
+    # Opslaan lokaal
+    import json
+    filename = "woning_schouw_data.json"
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+    st.success(f"Checklist succesvol opgeslagen als {filename}")
+
+    # Opslaan in Google Sheets
+    try:
+        sheet = connect_to_gsheet()
+        flat_row = flatten_data_for_sheet(data)
+        sheet.append_row(flat_row)
+        st.success("✅ Gegevens ook succesvol opgeslagen in Google Sheets!")
+    except Exception as e:
+        st.error(f"Fout bij opslaan in Google Sheets: {e}")
+
         with open("woning_schouw_data.json", "w", encoding="utf-8") as f:
             f.write(json_data)
         st.success("Checklist succesvol opgeslagen als woning_schouw_data.json")
